@@ -1,120 +1,99 @@
+# app.py
+
 import streamlit as st
-from PIL import Image
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from datetime import datetime
 
-# --- Page config ---
-st.set_page_config(
-    page_title="NZ Indoor Air Quality Checker",
-    page_icon="🏠",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Page setup
+st.set_page_config(page_title="NZ Indoor Air Quality Tool", page_icon="🏡", layout="wide", initial_sidebar_state="expanded")
 
-# --- Sidebar Layout ---
+# Sidebar - Input
 with st.sidebar:
-    # Optional logo (comment this line if you don't have a logo file)
-    # st.image("your_logo.png", width=150)
+    st.title("📅 IAQ Evaluation Form")
 
-    st.title("IAQ Survey")
-    st.markdown("Answer the questions below to get an IAQ risk assessment for your room.")
-
-    room = st.selectbox("Which room are you assessing?", ["Bedroom", "Living Room", "Kitchen", "Bathroom", "Other"])
-    building_age = st.slider("Age of building (years)", 0, 120, 30)
-    number_of_occupants = st.number_input("Number of people using this room", min_value=1, max_value=12, value=2)
-    ventilation = st.selectbox("How is this room ventilated?", [
-        "No ventilation", "Window only", "Fan", "Mechanical system", "HRV/ERV unit"
-    ])
-    mold = st.radio("Visible mold or musty smell?", ["Yes", "No"])
-    drying = st.selectbox("Do you dry clothes inside?", ["Never", "Sometimes", "Often"])
-    cooking = st.selectbox("Do you cook with gas appliances here?", ["No", "Yes"])
-    heating = st.selectbox("Primary heating type", [
-        "None", "Portable gas heater", "Heat pump", "Electric heater", "Wood burner"
-    ])
-    insulation = st.selectbox("Wall and ceiling insulation status", [
-        "Good", "Partial", "Poor", "Unknown"
-    ])
-    humidity = st.slider("Estimated indoor humidity (%)", 20, 90, 60)
+    room_name = st.text_input("Room name/label", value="Living Room")
+    num_occupants = st.number_input("Number of people using the room", 1, 12, 2)
+    ventilation = st.selectbox("Ventilation type", ["No ventilation", "Window only", "Fan", "Mechanical ventilation", "HRV/ERV system"])
+    mold_presence = st.radio("Visible mold or musty smell?", ["Yes", "No"])
+    drying_clothes = st.selectbox("Do you dry clothes indoors?", ["Never", "Sometimes", "Often"])
+    cooking_type = st.selectbox("Cooking method (if applicable)", ["None", "Electric stove", "Gas stove"])
+    heating_type = st.selectbox("Primary heating type", ["None", "Portable gas heater", "Heat pump", "Electric heater", "Wood burner"])
+    insulation_status = st.selectbox("Wall/Ceiling insulation", ["Good", "Partial", "Poor", "Unknown"])
+    humidity_level = st.slider("Estimated indoor humidity (%)", 20, 90, 60)
+    building_age = st.slider("Building age (years)", 0, 120, 30)
     is_renter = st.radio("Are you renting this property?", ["Yes", "No"])
 
-# --- Header Banner ---
+# Scoring model
+iaq_factors = {
+    "Ventilation": 2 if ventilation == "No ventilation" else 1 if ventilation == "Window only" else 0,
+    "Mold/Moisture": 2 if mold_presence == "Yes" else 0,
+    "Drying habits": 2 if drying_clothes == "Often" else 1 if drying_clothes == "Sometimes" else 0,
+    "Cooking source": 1 if cooking_type == "Gas stove" else 0,
+    "Heating type": 2 if heating_type == "Portable gas heater" else 1 if heating_type == "None" else 0,
+    "Insulation": 1 if insulation_status in ["Poor", "Unknown"] else 0,
+    "Humidity": 1 if humidity_level >= 65 else 0,
+    "Building age": 1 if building_age >= 60 else 0,
+    "Occupants": 2 if num_occupants >= 4 else 1 if num_occupants == 3 else 0
+}
+
+iaq_score = sum(iaq_factors.values())
+
+# Header & Radar Chart
 st.markdown("""
-    <div style='background-color:#009688;padding:15px;border-radius:8px'>
-        <h2 style='color:white;text-align:center;'>NZ Indoor Air Quality Checker</h2>
+    <div style='background-color:#00695c;padding:15px;border-radius:10px'>
+        <h2 style='color:white;text-align:center;'>🏡 NZ Indoor Air Quality Assessment</h2>
     </div>
 """, unsafe_allow_html=True)
 
-st.write("This tool helps you assess your room's indoor air quality and offers recommendations aligned with New Zealand housing conditions.")
+st.write("Use this tool to evaluate and improve indoor air quality, tailored for NZ homes and rental conditions.")
 
-# --- Scoring Logic ---
-score = 0
+# Radar chart to visualize score components
+st.subheader("🔄 IAQ Risk Breakdown")
+categories = list(iaq_factors.keys())
+values = list(iaq_factors.values()) + [list(iaq_factors.values())[0]]
+angles = np.linspace(0, 2 * np.pi, len(categories), endpoint=False).tolist()
+angles += angles[:1]
 
-# Risk scoring based on inputs
-if ventilation == "No ventilation":
-    score += 2
-elif ventilation == "Window only":
-    score += 1
+fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
+ax.fill(angles, values, color='#26a69a', alpha=0.25)
+ax.plot(angles, values, color='#00796b', linewidth=2)
+ax.set_yticks([0, 1, 2])
+ax.set_xticks(angles[:-1])
+ax.set_xticklabels(categories)
+st.pyplot(fig)
 
-if mold == "Yes":
-    score += 2
-
-if drying == "Often":
-    score += 2
-elif drying == "Sometimes":
-    score += 1
-
-if cooking == "Yes":
-    score += 1
-
-if heating == "Portable gas heater":
-    score += 2
-elif heating == "None":
-    score += 1
-
-if insulation in ["Poor", "Unknown"]:
-    score += 1
-
-if humidity >= 65:
-    score += 1
-
-if building_age > 60:
-    score += 1
-
-if number_of_occupants >= 4:
-    score += 2
-elif number_of_occupants == 3:
-    score += 1
-
-# --- Output Results ---
-st.subheader("🔍 IAQ Risk Assessment")
-
-if score >= 7:
-    st.error("❌ High IAQ Risk: Immediate action recommended.")
-elif score >= 4:
-    st.warning("⚠️ Moderate IAQ Risk: Some improvements needed.")
+# Score interpretation
+st.subheader("🔍 Overall IAQ Risk")
+if iaq_score >= 9:
+    st.error("❌ High IAQ Risk: Immediate intervention recommended.")
+elif iaq_score >= 5:
+    st.warning("⚠️ Moderate IAQ Risk: Improvement needed.")
 else:
-    st.success("✅ Low IAQ Risk: Conditions seem acceptable.")
+    st.success("✅ Low IAQ Risk: No urgent concerns.")
 
-# --- Personalized Recommendations ---
-st.markdown("### 💡 Recommendations")
-
+# Recommendations
+st.subheader("💡 Recommendations")
 if ventilation == "No ventilation":
-    st.markdown("- Improve airflow: open windows daily or consider installing fans or mechanical ventilation.")
-if mold == "Yes":
-    st.markdown("- Clean mold using safe methods. Identify and fix sources of excess moisture.")
-if drying != "Never":
-    st.markdown("- Avoid drying clothes indoors, or increase ventilation if you must.")
-if cooking == "Yes":
-    st.markdown("- Always ventilate during cooking, especially with gas stoves.")
-if heating == "Portable gas heater":
-    st.markdown("- Avoid unflued gas heaters. They release water vapor and pollutants. Use dry heat sources like heat pumps.")
-if insulation in ["Poor", "Unknown"]:
-    st.markdown("- Poor insulation contributes to dampness. Consider improving thermal performance.")
-if humidity >= 65:
-    st.markdown("- Use a dehumidifier or increase airflow. Try to keep indoor RH below 60%.")
-if number_of_occupants >= 4:
-    st.markdown("- With many people in a room, CO₂ and humidity rise quickly. Ensure consistent ventilation.")
+    st.markdown("- Install a fan or open windows daily for air exchange.")
+if mold_presence == "Yes":
+    st.markdown("- Identify and clean mold sources; use a dehumidifier.")
+if drying_clothes != "Never":
+    st.markdown("- Dry clothes outside or use a ventilated space.")
+if cooking_type == "Gas stove":
+    st.markdown("- Use a rangehood or ventilate while cooking.")
+if heating_type == "Portable gas heater":
+    st.markdown("- Avoid unflued gas heaters. Switch to dry heat sources.")
+if insulation_status in ["Poor", "Unknown"]:
+    st.markdown("- Improve insulation to reduce damp and heat loss.")
+if humidity_level >= 65:
+    st.markdown("- Maintain indoor RH below 60% with ventilation or dehumidifier.")
+if num_occupants >= 4:
+    st.markdown("- Higher occupancy needs more ventilation to control CO₂ and moisture.")
 if is_renter == "Yes":
-    st.markdown("- Learn about your rights under the [Healthy Homes Standards](https://www.tenancy.govt.nz/healthy-homes/). Request improvements if needed.")
+    st.markdown("- Check [Healthy Homes Standards](https://www.tenancy.govt.nz/healthy-homes/) for landlord responsibilities.")
 
-# --- Footer ---
+# Footer
 st.markdown("---")
-st.caption("This tool provides general guidance and should not replace professional building or health assessments.")
+st.caption("Developed as a demonstration IAQ tool. Not a substitute for professional indoor air assessments.")
